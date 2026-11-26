@@ -10,45 +10,19 @@ vi.mock('react-redux', () => ({
   useSelector: () => ({})
 }));
 
-// react-helmet sets document.title imperatively rather than rendering a
-// <title> element into the tree, so this mock does the same.
-const { HelmetMock } = vi.hoisted(() => {
-  const HelmetMock = ({ title }: { title?: string }) => {
-    React.useEffect(() => {
-      if (title !== undefined) {
-        document.title = title;
-      }
-    });
-    return null;
-  };
-  return { HelmetMock };
-});
-
 vi.mock('react-helmet', () => ({
   __esModule: true,
-  default: HelmetMock
-}));
-
-vi.mock('gatsby', () => ({
-  graphql: vi.fn()
+  default: ({ children }: { children?: React.ReactNode }) => (
+    <div>{children}</div>
+  )
 }));
 
 vi.mock('@growthbook/growthbook-react', () => ({
   useFeatureValue: () => []
 }));
 
-vi.mock('react-scroll', () => ({
-  scroller: { scrollTo: vi.fn() }
-}));
-
 vi.mock('../../components/Donation/donation-modal', () => ({
   default: () => null
-}));
-
-vi.mock('../../components/Header/components/login', () => ({
-  default: ({ children }: { children?: React.ReactNode }) => (
-    <span>{children}</span>
-  )
 }));
 
 vi.mock('../../components/Map', () => ({
@@ -63,19 +37,7 @@ vi.mock('./components/cert-challenge', () => ({
   default: () => null
 }));
 
-vi.mock('./components/help-translate', () => ({
-  default: () => null
-}));
-
 vi.mock('./components/legacy-links', () => ({
-  default: () => null
-}));
-
-vi.mock('./components/super-block-accordion', () => ({
-  SuperBlockAccordion: () => null
-}));
-
-vi.mock('./components/super-block-search', () => ({
   default: () => null
 }));
 
@@ -96,6 +58,13 @@ const translationMap: Record<string, unknown> = {
   'intro:responsive-web-design': {
     title: 'Responsive Web Design',
     intro: ['Create responsive layouts across devices.'],
+    note: ''
+  },
+  'intro:2022/responsive-web-design': {
+    title: 'Legacy Responsive Web Design V8',
+    intro: [
+      "In this Responsive Web Design Certification, you'll learn the languages that developers use to build webpages: HTML (Hypertext Markup Language) for content, and CSS (Cascading Style Sheets) for design."
+    ],
     note: ''
   },
   'intro:a2-english-for-developers': {
@@ -137,44 +106,6 @@ vi.mock('react-i18next', () => ({
     <span>{children}</span>
   ),
   withTranslation: () => (Component: React.ComponentType<unknown>) => Component
-}));
-
-vi.mock('@freecodecamp/ui', () => ({
-  Callout: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  Spacer: () => null,
-  Container: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  Row: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Col: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
-}));
-
-vi.mock('../../assets/superblock-icon', () => ({
-  SuperBlockIcon: () => <div />
-}));
-
-vi.mock('../../assets/icons/cap', () => ({ default: () => <div /> }));
-vi.mock('../../assets/icons/dumbbell', () => ({ default: () => <div /> }));
-vi.mock('../../assets/icons/community', () => ({ default: () => <div /> }));
-vi.mock('../../components/archived-warning', () => ({
-  default: () => <div />
-}));
-
-vi.mock('../../components/helpers', () => ({
-  Link: ({
-    children,
-    to,
-    ...rest
-  }: {
-    children: React.ReactNode;
-    to: string;
-  }) => (
-    <a href={to} {...rest}>
-      {children}
-    </a>
-  )
 }));
 
 import { BlockLabel, BlockLayouts } from '@freecodecamp/shared/config/blocks';
@@ -452,10 +383,29 @@ describe('SuperBlockIntroductionPage', () => {
 
     render(<SuperBlockIntroductionPage {...props} />);
 
-    expect(document.title).toBe('Coding Interview Prep | freeCodeCamp.org');
+    expect(
+      screen.getByText('Coding Interview Prep | freeCodeCamp.org')
+    ).toBeInTheDocument();
     expect(
       await screen.findByText(
         "If you're looking for free coding exercises to prepare for your next job interview, we've got you covered."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('renders the Legacy Responsive Web Design V8 page title and intro copy', async () => {
+    const superBlock = SuperBlocks.RespWebDesignNew;
+    const setup = createSetup(superBlock);
+    const props = createPageProps(setup, superBlock);
+
+    render(<SuperBlockIntroductionPage {...props} />);
+
+    expect(document.title).toBe(
+      'Legacy Responsive Web Design V8 | freeCodeCamp.org'
+    );
+    expect(
+      await screen.findByText(
+        "In this Responsive Web Design Certification, you'll learn the languages that developers use to build webpages: HTML (Hypertext Markup Language) for content, and CSS (Cascading Style Sheets) for design."
       )
     ).toBeInTheDocument();
   });
@@ -629,6 +579,98 @@ describe('SuperBlockIntroductionPage', () => {
           name: translationMap['misc.continue-learning'] as string
         })
       ).toBeNull();
+    });
+  });
+
+  describe('initial block expansion', () => {
+    const superBlock = SuperBlocks.RespWebDesign;
+
+    // The page dispatches toggleBlock with the initially expanded block on
+    // mount, so the expansion decision is observable through that call.
+    const createMultiBlockSetup = () => {
+      const setup = createSetup(superBlock);
+      // Move the last challenge into its own block so the priority chain has
+      // two blocks to choose between.
+      setup.challengeNodes[2].challenge.block = 'block-two';
+      return setup;
+    };
+
+    it('expands the block from the breadcrumb click, taking priority over the URL hash', () => {
+      const setup = createMultiBlockSetup();
+      const toggleBlock = vi.fn();
+      const props = createPageProps(setup, superBlock, {
+        toggleBlock,
+        location: {
+          ...createLocation(),
+          hash: '#block-one',
+          state: { breadcrumbBlockClick: 'block-two' }
+        }
+      });
+
+      render(<SuperBlockIntroductionPage {...props} />);
+
+      expect(toggleBlock).toHaveBeenCalledWith('block-two');
+    });
+
+    it('expands the block from the URL hash', () => {
+      const setup = createMultiBlockSetup();
+      const toggleBlock = vi.fn();
+      const props = createPageProps(setup, superBlock, {
+        toggleBlock,
+        location: { ...createLocation(), hash: '#block-two' }
+      });
+
+      render(<SuperBlockIntroductionPage {...props} />);
+
+      expect(toggleBlock).toHaveBeenCalledWith('block-two');
+    });
+
+    it('expands the block of the current challenge for a signed-in user', () => {
+      const setup = createMultiBlockSetup();
+      const toggleBlock = vi.fn();
+      const props = createPageProps(setup, superBlock, {
+        toggleBlock,
+        currentChallengeId: setup.challengeNodes[2].challenge.id
+      });
+
+      render(<SuperBlockIntroductionPage {...props} />);
+
+      expect(toggleBlock).toHaveBeenCalledWith('block-two');
+    });
+
+    it('expands the block of the most recently completed challenge when the current challenge is in another super block', () => {
+      const setup = createMultiBlockSetup();
+      const toggleBlock = vi.fn();
+      const props = createPageProps(setup, superBlock, {
+        toggleBlock,
+        currentChallengeId: 'challenge-in-another-super-block',
+        user: {
+          completedChallenges: [
+            { id: setup.challengeNodes[0].challenge.id, completedDate: 100 },
+            { id: setup.challengeNodes[2].challenge.id, completedDate: 200 }
+          ],
+          isDonating: false
+        }
+      });
+
+      render(<SuperBlockIntroductionPage {...props} />);
+
+      expect(toggleBlock).toHaveBeenCalledWith('block-two');
+    });
+
+    it('expands the first block for a signed-out user', () => {
+      const setup = createMultiBlockSetup();
+      const toggleBlock = vi.fn();
+      const props = createPageProps(setup, superBlock, {
+        toggleBlock,
+        isSignedIn: false,
+        currentChallengeId: setup.challengeNodes[2].challenge.id,
+        user: null
+      });
+
+      render(<SuperBlockIntroductionPage {...props} />);
+
+      expect(toggleBlock).toHaveBeenCalledWith('block-one');
     });
   });
 });
